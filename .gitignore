@@ -29,8 +29,8 @@ logs/*
 *.log
 
 # Local configuration and editor files
+config/gui_state.json
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-

@@ -32,6 +32,14 @@ def render_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def gui_command(args: argparse.Namespace) -> int:
+    """Launch the desktop image-composer interface."""
+    from src.gui import launch_gui
+
+    launch_gui()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the central CLI parser.
 
@@ -70,6 +78,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Minimum margin around the product in pixels (default: 0).",
     )
     render_parser.set_defaults(handler=render_command)
+
+    gui_parser = subparsers.add_parser(
+        "gui",
+        help="Open the desktop image-composer interface.",
+    )
+    gui_parser.set_defaults(handler=gui_command)
 
     return parser
 

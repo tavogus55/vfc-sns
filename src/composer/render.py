@@ -43,38 +43,51 @@ def create_product_image(
     if margin < 0:
         raise ValueError("margin must be zero or greater")
 
+    template = compose_product_on_template(template_path, product_path, margin)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_format = "JPEG" if output_path.suffix.lower() in {".jpg", ".jpeg"} else "PNG"
+    if output_format == "JPEG":
+        template.convert("RGB").save(output_path, format=output_format, quality=95)
+    else:
+        template.save(output_path, format=output_format)
+
+    return output_path
+
+
+def compose_product_on_template(
+    template_path: Path,
+    product_path: Path,
+    margin: int = 0,
+) -> Image.Image:
+    """Return a template with a proportionally fitted product centered on it."""
+    if margin < 0:
+        raise ValueError("margin must be zero or greater")
+
     with Image.open(template_path) as template_file, Image.open(product_path) as product_file:
         template = template_file.convert("RGBA")
         product = product_file.convert("RGBA")
 
-        available_width = template.width - (margin * 2)
-        available_height = template.height - (margin * 2)
-        if available_width <= 0 or available_height <= 0:
-            raise ValueError("margin is too large for the template dimensions")
+    available_width = template.width - (margin * 2)
+    available_height = template.height - (margin * 2)
+    if available_width <= 0 or available_height <= 0:
+        raise ValueError("margin is too large for the template dimensions")
 
-        scale = min(
-            1.0,
-            available_width / product.width,
-            available_height / product.height,
+    scale = min(
+        1.0,
+        available_width / product.width,
+        available_height / product.height,
+    )
+    if scale < 1.0:
+        resized_size = (
+            max(1, round(product.width * scale)),
+            max(1, round(product.height * scale)),
         )
-        if scale < 1.0:
-            resized_size = (
-                max(1, round(product.width * scale)),
-                max(1, round(product.height * scale)),
-            )
-            product = product.resize(resized_size, Image.Resampling.LANCZOS)
+        product = product.resize(resized_size, Image.Resampling.LANCZOS)
 
-        position = (
-            (template.width - product.width) // 2,
-            (template.height - product.height) // 2,
-        )
-        template.alpha_composite(product, dest=position)
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_format = "JPEG" if output_path.suffix.lower() in {".jpg", ".jpeg"} else "PNG"
-        if output_format == "JPEG":
-            template.convert("RGB").save(output_path, format=output_format, quality=95)
-        else:
-            template.save(output_path, format=output_format)
-
-    return output_path
+    position = (
+        (template.width - product.width) // 2,
+        (template.height - product.height) // 2,
+    )
+    template.alpha_composite(product, dest=position)
+    return template

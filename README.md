@@ -27,7 +27,8 @@ logs/                   # Local runtime logs (ignored)
 scripts/                # Command-line entry points
 src/
 ├── composer/           # Product-image and title composition
-└── publisher/          # Social-platform publishing integrations
+├── publisher/          # Social-platform publishing integrations
+└── gui.py              # Desktop image-composer interface
 tests/                  # Automated tests
 main.py                 # Central command-line entry point
 ```
@@ -63,3 +64,16 @@ python main.py render \
 `main.py` is the central process dispatcher. Future commands such as
 `publish` can be added as subcommands while keeping their implementation in
 the appropriate package under `src/`.
+
+## Desktop GUI
+
+Launch the image-composer interface with:
+
+```bash
+python main.py gui
+```
+
+The GUI lets you choose a template and product image, preview the centered
+result, and create the final image. The selected paths are retained in the
+interface and saved locally for the next launch. After creation, the output
+file is selected in the system file explorer.

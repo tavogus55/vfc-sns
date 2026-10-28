@@ -79,3 +79,12 @@ slider, and create the final image using those exact position and size
 settings. The selected paths and transform settings are retained in the
 interface and saved locally for the next launch. After creation, the output
 file is selected in the system file explorer.
+
+The same GUI includes a local Ollama post generator. Paste a full product
+description into the Product information box, choose the Ollama model (the
+default is `qwen3:1.7b`), and click Generate post. The assistant returns a
+product name, exactly three factual characteristics, and a contact call to
+action in a ready-to-publish format. Ollama must be running locally at
+`http://localhost:11434` (or change the URL in the panel). The URL and model
+can also be configured with the `OLLAMA_URL` and `OLLAMA_MODEL` environment
+variables.

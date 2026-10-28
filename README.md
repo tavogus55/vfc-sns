@@ -29,6 +29,7 @@ src/
 ├── composer/           # Product-image and title composition
 └── publisher/          # Social-platform publishing integrations
 tests/                  # Automated tests
+main.py                 # Central command-line entry point
 ```
 
 Secrets belong in a local `.env` file and must never be committed.
@@ -45,16 +46,20 @@ When `assets/templates/` and `assets/images/products/` each contain one image,
 run:
 
 ```bash
-python -m src.composer.render
+python main.py render
 ```
 
 The result is written to `assets/output/final-product.jpg`. To select files
 explicitly or leave space around the product image:
 
 ```bash
-python -m src.composer.render \
+python main.py render \
   --template assets/templates/template.jpg \
   --product assets/images/products/product.jpg \
   --output assets/output/product-post.jpg \
   --margin 40
 ```
+
+`main.py` is the central process dispatcher. Future commands such as
+`publish` can be added as subcommands while keeping their implementation in
+the appropriate package under `src/`.

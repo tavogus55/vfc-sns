@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 from PIL import Image
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
 
@@ -80,51 +78,3 @@ def create_product_image(
             template.save(output_path, format=output_format)
 
     return output_path
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Center a product image on a social-media template."
-    )
-    parser.add_argument(
-        "--template",
-        type=Path,
-        help="Template image. If omitted, the only image in assets/templates is used.",
-    )
-    parser.add_argument(
-        "--product",
-        type=Path,
-        help="Product image. If omitted, the only image in assets/images/products is used.",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=PROJECT_ROOT / "assets" / "output" / "final-product.jpg",
-        help="Output path (default: assets/output/final-product.jpg).",
-    )
-    parser.add_argument(
-        "--margin",
-        type=int,
-        default=0,
-        help="Minimum margin around the product in pixels (default: 0).",
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    template_path = args.template or find_single_image(PROJECT_ROOT / "assets" / "templates")
-    product_path = args.product or find_single_image(PROJECT_ROOT / "assets" / "images" / "products")
-
-    output_path = create_product_image(
-        template_path=template_path,
-        product_path=product_path,
-        output_path=args.output,
-        margin=args.margin,
-    )
-    print(f"Created {output_path}")
-
-
-if __name__ == "__main__":
-    main()
-

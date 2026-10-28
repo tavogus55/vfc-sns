@@ -25,7 +25,29 @@ class RenderTest(unittest.TestCase):
                 self.assertEqual(result.getpixel((40, 35))[:3], (255, 0, 0))
                 self.assertEqual(result.getpixel((0, 0))[:3], (255, 255, 255))
 
+    def test_product_position_and_scale_are_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            template_path = directory / "template.png"
+            product_path = directory / "product.png"
+            output_path = directory / "output.png"
+
+            Image.new("RGBA", (100, 80), "white").save(template_path)
+            Image.new("RGBA", (20, 10), "red").save(product_path)
+
+            create_product_image(
+                template_path,
+                product_path,
+                output_path,
+                position=(10, 20),
+                scale=2.0,
+            )
+
+            with Image.open(output_path) as result:
+                self.assertEqual(result.getpixel((10, 20))[:3], (255, 0, 0))
+                self.assertEqual(result.getpixel((49, 39))[:3], (255, 0, 0))
+                self.assertEqual(result.getpixel((50, 40))[:3], (255, 255, 255))
+
 
 if __name__ == "__main__":
     unittest.main()
-

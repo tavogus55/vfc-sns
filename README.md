@@ -74,6 +74,8 @@ python main.py gui
 ```
 
 The GUI lets you choose a template and product image, preview the centered
-result, and create the final image. The selected paths are retained in the
+result, drag the product within the preview, resize it with the product-size
+slider, and create the final image using those exact position and size
+settings. The selected paths and transform settings are retained in the
 interface and saved locally for the next launch. After creation, the output
 file is selected in the system file explorer.

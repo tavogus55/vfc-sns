@@ -8,11 +8,15 @@ import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 from PIL import Image, ImageTk
 
-from src.composer.render import compose_product_on_template, create_product_image
+from src.composer.render import (
+    clamp_position,
+    create_product_image,
+    fit_product_to_template,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -31,8 +35,17 @@ class ImageComposerApp:
         self.template_var = tk.StringVar()
         self.product_var = tk.StringVar()
         self.output_var = tk.StringVar(value=str(DEFAULT_OUTPUT))
+        self.scale_var = tk.DoubleVar(value=1.0)
+        self.scale_label_var = tk.StringVar(value="100%")
         self.status_var = tk.StringVar(value="Choose a template and product image.")
         self.preview_image: Optional[ImageTk.PhotoImage] = None
+        self.template_size: Optional[Tuple[int, int]] = None
+        self.product_size: Optional[Tuple[int, int]] = None
+        self.product_position: Optional[Tuple[int, int]] = None
+        self.preview_display_scale = 1.0
+        self.preview_offset = (0, 0)
+        self.drag_start: Optional[Tuple[int, int]] = None
+        self.drag_origin: Optional[Tuple[int, int]] = None
 
         self._build_layout()
         self._restore_state()
@@ -68,9 +81,26 @@ class ImageComposerApp:
             command=self._choose_output,
         )
 
+        ttk.Label(controls, text="Product size").grid(row=3, column=0, padx=(0, 8), pady=4, sticky="w")
+        self.scale_slider = ttk.Scale(
+            controls,
+            from_=0.25,
+            to=2.0,
+            variable=self.scale_var,
+            command=self._on_scale_changed,
+        )
+        self.scale_slider.grid(row=3, column=1, padx=(0, 8), pady=4, sticky="ew")
+        self.scale_slider.bind("<ButtonRelease-1>", lambda _event: self._save_state())
+        ttk.Label(controls, textvariable=self.scale_label_var, width=6).grid(
+            row=3, column=2, pady=4, sticky="e"
+        )
+
         actions = ttk.Frame(controls)
-        actions.grid(row=3, column=0, columnspan=3, pady=(10, 0), sticky="w")
+        actions.grid(row=4, column=0, columnspan=3, pady=(10, 0), sticky="w")
         ttk.Button(actions, text="Refresh preview", command=self._refresh_preview).pack(side="left")
+        ttk.Button(actions, text="Reset position and size", command=self._reset_transform).pack(
+            side="left", padx=(8, 0)
+        )
         ttk.Button(actions, text="Create image", command=self._create_image).pack(side="left", padx=(8, 0))
 
         preview_frame = ttk.LabelFrame(self.root, text="Preview", padding=12)
@@ -78,14 +108,17 @@ class ImageComposerApp:
         preview_frame.columnconfigure(0, weight=1)
         preview_frame.rowconfigure(0, weight=1)
 
-        self.preview_label = tk.Label(
+        self.preview_canvas = tk.Canvas(
             preview_frame,
-            text="Preview will appear here",
+            width=720,
+            height=480,
             background="#333333",
-            foreground="white",
-            anchor="center",
+            highlightthickness=0,
         )
-        self.preview_label.grid(row=0, column=0, sticky="nsew")
+        self.preview_canvas.grid(row=0, column=0, sticky="nsew")
+        self.preview_canvas.bind("<ButtonPress-1>", self._on_preview_press)
+        self.preview_canvas.bind("<B1-Motion>", self._on_preview_drag)
+        self.preview_canvas.bind("<ButtonRelease-1>", self._on_preview_release)
 
         ttk.Label(self.root, textvariable=self.status_var, padding=(12, 0, 12, 8)).grid(
             row=2, column=0, sticky="w"
@@ -112,6 +145,7 @@ class ImageComposerApp:
         )
         if selected:
             self.template_var.set(selected)
+            self._reset_transform(save=False)
             self._save_state()
             self._refresh_preview()
 
@@ -123,6 +157,7 @@ class ImageComposerApp:
         )
         if selected:
             self.product_var.set(selected)
+            self._reset_transform(save=False)
             self._save_state()
             self._refresh_preview()
 
@@ -142,20 +177,141 @@ class ImageComposerApp:
         template_path = Path(self.template_var.get())
         product_path = Path(self.product_var.get())
         if not template_path.is_file() or not product_path.is_file():
-            self.preview_label.configure(image="", text="Choose a template and product image.")
+            self.preview_canvas.delete("all")
+            self.preview_canvas.create_text(
+                360,
+                240,
+                text="Choose a template and product image.",
+                fill="white",
+            )
             self.preview_image = None
+            self.template_size = None
+            self.product_size = None
             return
 
         try:
-            preview = compose_product_on_template(template_path, product_path)
-            preview.thumbnail((720, 480), Image.Resampling.LANCZOS)
+            with Image.open(template_path) as template_file, Image.open(product_path) as product_file:
+                template = template_file.convert("RGBA")
+                product = product_file.convert("RGBA")
+
+            fitted_product = fit_product_to_template(
+                template,
+                product,
+                scale=float(self.scale_var.get()),
+            )
+            self.template_size = template.size
+            self.product_size = fitted_product.size
+            if self.product_position is None:
+                self.product_position = (
+                    (template.width - fitted_product.width) // 2,
+                    (template.height - fitted_product.height) // 2,
+                )
+            self.product_position = clamp_position(
+                template.size,
+                fitted_product.size,
+                self.product_position,
+            )
+            template.alpha_composite(fitted_product, dest=self.product_position)
+
+            max_width, max_height = 720, 480
+            self.preview_display_scale = min(
+                1.0,
+                max_width / template.width,
+                max_height / template.height,
+            )
+            display_size = (
+                max(1, round(template.width * self.preview_display_scale)),
+                max(1, round(template.height * self.preview_display_scale)),
+            )
+            preview = template.resize(display_size, Image.Resampling.LANCZOS)
             self.preview_image = ImageTk.PhotoImage(preview)
-            self.preview_label.configure(image=self.preview_image, text="")
-            self.status_var.set("Preview updated. Selections are retained.")
+            self.preview_offset = (
+                (max_width - display_size[0]) // 2,
+                (max_height - display_size[1]) // 2,
+            )
+            self.preview_canvas.delete("all")
+            self.preview_canvas.create_image(
+                self.preview_offset[0],
+                self.preview_offset[1],
+                image=self.preview_image,
+                anchor="nw",
+            )
+            self.scale_label_var.set(f"{float(self.scale_var.get()) * 100:.0f}%")
+            self.status_var.set("Drag the product to move it, or use the size slider.")
         except Exception as error:  # noqa: BLE001 - GUI should show readable errors.
-            self.preview_label.configure(image="", text="Unable to preview these files.")
+            self.preview_canvas.delete("all")
+            self.preview_canvas.create_text(360, 240, text="Unable to preview these files.", fill="white")
             self.preview_image = None
             self.status_var.set(str(error))
+
+    def _on_scale_changed(self, value: str) -> None:
+        old_size = self.product_size
+        old_position = self.product_position
+        new_scale = float(value)
+        self.scale_label_var.set(f"{new_scale * 100:.0f}%")
+
+        if old_size and old_position:
+            old_center = (
+                old_position[0] + old_size[0] / 2,
+                old_position[1] + old_size[1] / 2,
+            )
+            new_size = self._get_product_size(new_scale)
+            if new_size:
+                self.product_position = (
+                    round(old_center[0] - new_size[0] / 2),
+                    round(old_center[1] - new_size[1] / 2),
+                )
+        self._refresh_preview()
+
+    def _get_product_size(self, scale: float) -> Optional[Tuple[int, int]]:
+        template_path = Path(self.template_var.get())
+        product_path = Path(self.product_var.get())
+        if not template_path.is_file() or not product_path.is_file():
+            return None
+        with Image.open(template_path) as template_file, Image.open(product_path) as product_file:
+            template = template_file.convert("RGBA")
+            product = product_file.convert("RGBA")
+        return fit_product_to_template(template, product, scale=scale).size
+
+    def _reset_transform(self, save: bool = True) -> None:
+        self.product_position = None
+        self.scale_var.set(1.0)
+        self.scale_label_var.set("100%")
+        if save:
+            self._save_state()
+        if hasattr(self, "preview_canvas"):
+            self._refresh_preview()
+
+    def _on_preview_press(self, event: tk.Event) -> None:
+        if not self.product_position or not self.product_size:
+            return
+        template_x = (event.x - self.preview_offset[0]) / self.preview_display_scale
+        template_y = (event.y - self.preview_offset[1]) / self.preview_display_scale
+        product_x, product_y = self.product_position
+        product_width, product_height = self.product_size
+        if product_x <= template_x <= product_x + product_width and product_y <= template_y <= product_y + product_height:
+            self.drag_start = (event.x, event.y)
+            self.drag_origin = self.product_position
+            self.preview_canvas.configure(cursor="fleur")
+
+    def _on_preview_drag(self, event: tk.Event) -> None:
+        if not self.drag_start or not self.drag_origin or not self.template_size or not self.product_size:
+            return
+        delta_x = (event.x - self.drag_start[0]) / self.preview_display_scale
+        delta_y = (event.y - self.drag_start[1]) / self.preview_display_scale
+        self.product_position = clamp_position(
+            self.template_size,
+            self.product_size,
+            (self.drag_origin[0] + round(delta_x), self.drag_origin[1] + round(delta_y)),
+        )
+        self._refresh_preview()
+
+    def _on_preview_release(self, _event: tk.Event) -> None:
+        if self.drag_start:
+            self._save_state()
+        self.drag_start = None
+        self.drag_origin = None
+        self.preview_canvas.configure(cursor="")
 
     def _create_image(self) -> None:
         template_path = Path(self.template_var.get())
@@ -166,7 +322,13 @@ class ImageComposerApp:
             return
 
         try:
-            created_path = create_product_image(template_path, product_path, output_path)
+            created_path = create_product_image(
+                template_path,
+                product_path,
+                output_path,
+                position=self.product_position,
+                scale=float(self.scale_var.get()),
+            )
             self._save_state()
             self.status_var.set(f"Created: {created_path}")
             self._reveal_in_file_explorer(created_path)
@@ -191,12 +353,24 @@ class ImageComposerApp:
             self.product_var.set(product)
         if output:
             self.output_var.set(output)
+        try:
+            self.scale_var.set(float(state.get("scale", 1.0)))
+        except (TypeError, ValueError):
+            self.scale_var.set(1.0)
+        saved_position = state.get("position")
+        if isinstance(saved_position, list) and len(saved_position) == 2:
+            try:
+                self.product_position = (int(saved_position[0]), int(saved_position[1]))
+            except (TypeError, ValueError):
+                self.product_position = None
 
     def _save_state(self) -> None:
         state = {
             "template": self.template_var.get(),
             "product": self.product_var.get(),
             "output": self.output_var.get(),
+            "scale": float(self.scale_var.get()),
+            "position": list(self.product_position) if self.product_position else None,
         }
         try:
             STATE_PATH.parent.mkdir(parents=True, exist_ok=True)

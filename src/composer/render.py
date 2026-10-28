@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional, Tuple
 
 from PIL import Image
 
@@ -33,6 +34,8 @@ def create_product_image(
     product_path: Path,
     output_path: Path,
     margin: int = 0,
+    position: Optional[Tuple[int, int]] = None,
+    scale: float = 1.0,
 ) -> Path:
     """Place a product image in the center of a template.
 
@@ -43,7 +46,13 @@ def create_product_image(
     if margin < 0:
         raise ValueError("margin must be zero or greater")
 
-    template = compose_product_on_template(template_path, product_path, margin)
+    template = compose_product_on_template(
+        template_path,
+        product_path,
+        margin=margin,
+        position=position,
+        scale=scale,
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_format = "JPEG" if output_path.suffix.lower() in {".jpg", ".jpeg"} else "PNG"
@@ -59,35 +68,74 @@ def compose_product_on_template(
     template_path: Path,
     product_path: Path,
     margin: int = 0,
+    position: Optional[Tuple[int, int]] = None,
+    scale: float = 1.0,
 ) -> Image.Image:
-    """Return a template with a proportionally fitted product centered on it."""
+    """Return a template with a proportionally fitted product composited on it."""
     if margin < 0:
         raise ValueError("margin must be zero or greater")
+    if scale <= 0:
+        raise ValueError("scale must be greater than zero")
 
     with Image.open(template_path) as template_file, Image.open(product_path) as product_file:
         template = template_file.convert("RGBA")
         product = product_file.convert("RGBA")
+
+    product = fit_product_to_template(template, product, margin=margin, scale=scale)
+
+    if position is None:
+        position = (
+            (template.width - product.width) // 2,
+            (template.height - product.height) // 2,
+        )
+    else:
+        position = clamp_position(template.size, product.size, position)
+
+    template.alpha_composite(product, dest=position)
+    return template
+
+
+def fit_product_to_template(
+    template: Image.Image,
+    product: Image.Image,
+    margin: int = 0,
+    scale: float = 1.0,
+) -> Image.Image:
+    """Resize a product proportionally relative to its default fitted size."""
+    if margin < 0:
+        raise ValueError("margin must be zero or greater")
+    if scale <= 0:
+        raise ValueError("scale must be greater than zero")
 
     available_width = template.width - (margin * 2)
     available_height = template.height - (margin * 2)
     if available_width <= 0 or available_height <= 0:
         raise ValueError("margin is too large for the template dimensions")
 
-    scale = min(
+    fit_scale = min(
         1.0,
         available_width / product.width,
         available_height / product.height,
     )
-    if scale < 1.0:
+    resize_scale = fit_scale * scale
+    if resize_scale != 1.0:
         resized_size = (
-            max(1, round(product.width * scale)),
-            max(1, round(product.height * scale)),
+            max(1, round(product.width * resize_scale)),
+            max(1, round(product.height * resize_scale)),
         )
         product = product.resize(resized_size, Image.Resampling.LANCZOS)
+    return product
 
-    position = (
-        (template.width - product.width) // 2,
-        (template.height - product.height) // 2,
+
+def clamp_position(
+    template_size: Tuple[int, int],
+    product_size: Tuple[int, int],
+    position: Tuple[int, int],
+) -> Tuple[int, int]:
+    """Keep a product fully inside the template canvas."""
+    max_x = max(0, template_size[0] - product_size[0])
+    max_y = max(0, template_size[1] - product_size[1])
+    return (
+        min(max(0, round(position[0])), max_x),
+        min(max(0, round(position[1])), max_y),
     )
-    template.alpha_composite(product, dest=position)
-    return template

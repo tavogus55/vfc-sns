@@ -1,0 +1,36 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# JavaScript tooling (if used by publishing integrations)
+node_modules/
+
+# Generated and temporary media
+assets/output/*
+!assets/output/.gitkeep
+assets/processed/*
+!assets/processed/.gitkeep
+assets/drafts/*
+!assets/drafts/.gitkeep
+
+# Runtime files
+logs/*
+!logs/.gitkeep
+*.log
+
+# Local configuration and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
